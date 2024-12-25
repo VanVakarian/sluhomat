@@ -1,17 +1,12 @@
-import ffmpegStatic from 'ffmpeg-static';
-import ffmpeg from 'fluent-ffmpeg';
 import fs, { promises as fsPromises } from 'fs';
-import OpenAI from 'openai';
 import path from 'path';
 import { pipeline } from 'stream/promises';
 
 import { dbGetUser } from '../db/users.js';
-import { CHUNK_LENGTH_MINUTES, MAX_PROMPT_LENGTH, OPENAI_API_KEY, TEMP_FILES_DIR, TG_BOT_KEY } from '../env.js';
+import { CHUNK_LENGTH_MINUTES, TEMP_FILES_DIR, TG_BOT_KEY } from '../env.js';
 import logger from '../logger.js';
-
-ffmpeg.setFfmpegPath(ffmpegStatic);
-
-const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+import { getService } from '../services/speech_recognition/index.js';
+import { convertToWav, splitAudioIntoChunks } from '../utils/audio_utils.js';
 
 const EMOJI = {
   DONE: '✅',
@@ -49,26 +44,6 @@ async function cleanupTempFiles() {
   }
 }
 
-function convertToWav(inputPath, outputPath) {
-  return new Promise((resolve, reject) => {
-    ffmpeg(inputPath)
-      .toFormat('wav')
-      .outputOptions('-vn')
-      .on('end', () => resolve())
-      .on('error', (err) => reject(err))
-      .save(outputPath);
-  });
-}
-
-function getAudioDuration(filePath) {
-  return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(filePath, (err, metadata) => {
-      if (err) return reject(err);
-      resolve(metadata.format.duration);
-    });
-  });
-}
-
 function formatTime(seconds) {
   if (seconds < 60) {
     return `${Math.round(seconds)} сек`;
@@ -100,74 +75,6 @@ function getOriginalFilename(file) {
       .replace('T', '_'); // Replacing 'T' with underscore
     return `media_${timestamp}`;
   }
-}
-
-async function splitAudioIntoChunks(inputPath, outputDir, chunkLengthMinutes) {
-  const duration = await getAudioDuration(inputPath);
-  const chunkLengthSeconds = chunkLengthMinutes * 60;
-  const chunks = [];
-
-  for (let start = 0; start < duration; start += chunkLengthSeconds) {
-    const outputPath = path.join(outputDir, `chunk-${start}.wav`);
-    const currentChunkLength = Math.min(chunkLengthSeconds, duration - start);
-
-    await new Promise((resolve, reject) => {
-      ffmpeg(inputPath)
-        .setStartTime(start)
-        .setDuration(currentChunkLength)
-        .toFormat('wav')
-        .on('end', () => resolve())
-        .on('error', (err) => reject(err))
-        .save(outputPath);
-    });
-
-    chunks.push({
-      path: outputPath,
-      startTime: start,
-      duration: currentChunkLength,
-    });
-  }
-
-  return chunks;
-}
-
-async function cleanDirectory(directory) {
-  try {
-    await fsPromises.rm(directory, { recursive: true, force: true });
-    await fsPromises.mkdir(directory, { recursive: true });
-  } catch (error) {
-    await logger.error('Error cleaning directory:', error);
-    throw error;
-  }
-}
-
-async function downloadAudioFile(ctx, file, downloadPath) {
-  const fileLink = await ctx.telegram.getFile(file.file_id);
-  const fileUrl = `https://api.telegram.org/file/bot${TG_BOT_KEY}/${fileLink.file_path}`;
-
-  const response = await fetch(fileUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to download file: ${response.statusText}`);
-  }
-
-  const fileStream = fs.createWriteStream(downloadPath);
-  await pipeline(response.body, fileStream);
-
-  return fileLink;
-}
-
-async function processAudioChunk(chunk, previousChunkText) {
-  const prompt = previousChunkText.slice(-MAX_PROMPT_LENGTH);
-
-  const transcription = await openai.audio.transcriptions.create({
-    file: fs.createReadStream(chunk.path),
-    model: 'whisper-1',
-    prompt: prompt,
-    temperature: 0,
-    language: 'ru',
-  });
-
-  return transcription.text.trim();
 }
 
 async function updateTranscriptionProgress(
@@ -212,11 +119,11 @@ async function transcribeAudioChunks(chunks, steps, ctx, statusMsg) {
   let lastSavedPath = null;
 
   let i = 0;
-  for (const chunk of chunks) {
+  for (const chunkPath of chunks) {
     try {
       const chunkStartTime = Date.now();
       await updateTranscriptionProgress(steps, ctx, statusMsg, i, chunks.length, chunkProcessingTimes);
-      const chunkText = await processAudioChunk(chunk, previousChunkText);
+      const chunkText = await processAudioChunk(chunkPath, previousChunkText);
       const chunkProcessingTime = Date.now() - chunkStartTime;
       chunkProcessingTimes.push(chunkProcessingTime);
       fullTranscription += (i > 0 ? '\n' : '') + chunkText;
@@ -224,7 +131,7 @@ async function transcribeAudioChunks(chunks, steps, ctx, statusMsg) {
 
       if (i % 3 === 0 || i === chunks.length - 1) {
         lastSavedPath = await saveIntermediateResults(
-          path.dirname(chunk.path),
+          path.dirname(chunkPath),
           ctx.message.voice || ctx.message.audio || ctx.message.video || ctx.message.document,
           fullTranscription
         );
@@ -374,5 +281,35 @@ export async function handleAudioMessage(ctx) {
         await logger.error('Error in cleanup:', error);
       }
     }
+  }
+}
+
+async function processAudioChunk(chunkPath, previousChunkText) {
+  const service = getService();
+  return await service.transcribeChunk(chunkPath, previousChunkText);
+}
+
+async function downloadAudioFile(ctx, file, downloadPath) {
+  const fileLink = await ctx.telegram.getFile(file.file_id);
+  const fileUrl = `https://api.telegram.org/file/bot${TG_BOT_KEY}/${fileLink.file_path}`;
+
+  const response = await fetch(fileUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to download file: ${response.statusText}`);
+  }
+
+  const fileStream = fs.createWriteStream(downloadPath);
+  await pipeline(response.body, fileStream);
+
+  return fileLink;
+}
+
+async function cleanDirectory(directory) {
+  try {
+    await fsPromises.rm(directory, { recursive: true, force: true });
+    await fsPromises.mkdir(directory, { recursive: true });
+  } catch (error) {
+    await logger.error('Error cleaning directory:', error);
+    throw error;
   }
 }
