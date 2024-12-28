@@ -5,4 +5,9 @@ sluhomat.db
 package-lock.json
 strangers.log
 temp/
+del/
 bot_errors.log
+venv/
+*.mp3
+*.aac
+*.pyc
