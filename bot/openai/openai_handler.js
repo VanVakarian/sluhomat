@@ -5,9 +5,9 @@ import OpenAI from 'openai';
 import path from 'path';
 import { pipeline } from 'stream/promises';
 
-import { dbGetUser } from '../db/users.js';
-import { CHUNK_LENGTH_MINUTES, MAX_PROMPT_LENGTH, OPENAI_API_KEY, TEMP_FILES_DIR, TG_BOT_KEY } from '../env.js';
-import logger from '../logger.js';
+import { dbGetUser } from '../../db/users.js';
+import { CHUNK_LENGTH_MINUTES, MAX_PROMPT_LENGTH, OPENAI_API_KEY, TEMP_FILES_DIR, TG_BOT_KEY } from '../../env.js';
+import logger from '../../logger.js';
 
 ffmpeg.setFfmpegPath(ffmpegStatic);
 

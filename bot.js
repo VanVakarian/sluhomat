@@ -1,7 +1,7 @@
 import { Telegraf } from 'telegraf';
 import { message } from 'telegraf/filters';
 
-import { handleAudioMessage } from './bot/audio_handler.js';
+import { handleAudioMessage } from './bot/audio_gateway.js';
 import { handleStart } from './bot/commands.js';
 import { dbInit } from './db/init.js';
 import { TG_BOT_KEY } from './env.js';
