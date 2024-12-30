@@ -12,3 +12,4 @@ venv/
 *.aac
 *.pyc
 __pycache__
+test_audios/

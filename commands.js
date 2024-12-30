@@ -1,4 +1,4 @@
-import logger from '../logger.js';
+import logger from './logger.js';
 
 export async function handleStart(ctx) {
   try {
