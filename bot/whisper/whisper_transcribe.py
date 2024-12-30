@@ -129,28 +129,22 @@ def transcribe_file(file_content, filename):
 
 
 @app.local_entrypoint()
-def main():
+def main(input_file: str):
     start_time = time.monotonic_ns()
     print("⏱️ Starting execution")
 
-    audio_extensions = {'.mp3', '.wav', '.aac', '.m4a', '.flac', '.ogg'}
     audio_file = None
 
-    for f in Path('.').glob('*'):
-        if f.suffix.lower() in audio_extensions:
-            try:
-                with open(f, 'rb') as audio:
-                    content = audio.read()
-                    print(f"Read file {f}, size: {len(content)} bytes")
-                    audio_file = (content, str(f))
-                    break
-            except Exception as e:
-                print(f"Error reading {f}: {e}")
-
-    if not audio_file:
-        print("⚠️ No audio file found in current directory")
-        end_time = time.monotonic_ns()
-        print(f"⏱️ Total execution time: {round((end_time - start_time) / 1e9, 2)}s")
+    if not os.path.exists(input_file):
+        print(f"⚠️ Error: File {input_file} not found")
+        return
+    try:
+        with open(input_file, 'rb') as audio:
+            content = audio.read()
+            print(f"Read file {input_file}, size: {len(content)} bytes")
+            audio_file = (content, input_file)
+    except Exception as e:
+        print(f"Error reading {input_file}: {e}")
         return
 
     content, filepath = audio_file

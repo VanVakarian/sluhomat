@@ -5,12 +5,19 @@ import { pipeline } from 'stream/promises';
 
 import { TEMP_FILES_DIR, TG_BOT_KEY } from '../../env.js';
 import logger from '../../logger.js';
+import { logPythonOutput } from '../../utils.js';
 
 async function downloadFile(ctx, file) {
   const fileLink = await ctx.telegram.getFile(file.file_id);
   const fileUrl = `https://api.telegram.org/file/bot${TG_BOT_KEY}/${fileLink.file_path}`;
 
-  const tempDir = path.join(TEMP_FILES_DIR, file.file_id);
+  const userId = ctx.from.id;
+  const tempDir = path.join(TEMP_FILES_DIR, userId.toString());
+
+  if (fs.existsSync(tempDir)) {
+    await fs.promises.rm(tempDir, { recursive: true, force: true });
+  }
+
   await fs.promises.mkdir(tempDir, { recursive: true });
 
   const filePath = path.join(tempDir, `original${path.extname(fileLink.file_path)}`);
@@ -21,18 +28,22 @@ async function downloadFile(ctx, file) {
 }
 
 async function transcribeAudio(audioPath) {
-  const pythonProcess = spawn('modal', ['run', 'bot/whisper/whisper_transcribe.py', audioPath]);
+  const pythonProcess = spawn('modal', ['run', 'bot/whisper/whisper_transcribe.py', '--input-file', audioPath]);
 
   return new Promise((resolve, reject) => {
     let result = '';
     let error = '';
 
     pythonProcess.stdout.on('data', (data) => {
-      result += data.toString();
+      const output = data.toString();
+      result += output;
+      logPythonOutput('STDOUT', output);
     });
 
     pythonProcess.stderr.on('data', (data) => {
-      error += data.toString();
+      const output = data.toString();
+      error += output;
+      logPythonOutput('STDERR', output);
     });
 
     pythonProcess.on('close', (code) => {
@@ -51,6 +62,25 @@ async function transcribeAudio(audioPath) {
   });
 }
 
+function getOriginalFilename(file) {
+  // Trying to get filename from different message types:
+  if (file.file_name) {
+    // For documents, audio and video files:
+    return file.file_name.replace(/\.[^/.]+$/, ''); // Removing extension
+  } else if (file.title) {
+    // For audio messages with title:
+    return file.title;
+  } else {
+    // For voice messages, video notes or when no name is available:
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[-:]/g, '') // Removing hyphens and colons
+      .replace(/\..+/, '') // Removing milliseconds
+      .replace('T', '_'); // Replacing 'T' with underscore
+    return `media_${timestamp}`;
+  }
+}
+
 export async function handleAudioMessage(ctx) {
   try {
     const file = ctx.message.voice || ctx.message.audio || ctx.message.video || ctx.message.document;
@@ -63,7 +93,11 @@ export async function handleAudioMessage(ctx) {
     const filePath = await downloadFile(ctx, file);
     const transcription = await transcribeAudio(filePath);
 
-    await ctx.reply(transcription);
+    const originalName = getOriginalFilename(file);
+    const transcriptionFilePath = path.join(path.dirname(filePath), `${originalName}.txt`);
+    await fs.promises.writeFile(transcriptionFilePath, transcription, 'utf8');
+
+    await ctx.replyWithDocument({ source: transcriptionFilePath, filename: `${originalName}.txt` });
     await fs.promises.rm(path.dirname(filePath), { recursive: true, force: true });
   } catch (error) {
     await logger.error('Error in handleAudioMessage:', error);
