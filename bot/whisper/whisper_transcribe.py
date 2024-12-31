@@ -74,7 +74,6 @@ class Model:
     @modal.method()
     def transcribe(self, audio_sample):
         import numpy as np
-        print("Starting transcription")
 
         if isinstance(audio_sample, list):
             audio_sample = np.array(audio_sample).squeeze()
@@ -82,13 +81,12 @@ class Model:
         if len(audio_sample.shape) > 1:
             audio_sample = audio_sample.mean(axis=0)
 
-        print(f"Audio shape before processing: {audio_sample.shape}")
+        print("[STATUS] TRANSCRIBING")
         result = self.pipeline(
             audio_sample,
             batch_size=1,
             generate_kwargs={"language": "<|ru|>"}
         )
-        print(f"Transcription result: {result['text']}")
         return result["text"]
 
 
@@ -100,12 +98,12 @@ def transcribe_file(file_content, filename):
     from pydub import AudioSegment
 
     model = Model()
+    # print("[STATUS] PREPARING")
 
     try:
         try:
             audio_array, sr = librosa.load(io.BytesIO(file_content), sr=16000, mono=True)
         except:
-            print(f"Converting {filename} via pydub")
             audio = AudioSegment.from_file(io.BytesIO(file_content))
             wav_io = io.BytesIO()
             audio.export(wav_io, format='wav')
@@ -117,7 +115,6 @@ def transcribe_file(file_content, filename):
             audio_array = audio_array.mean(axis=0)
 
         if len(audio_array) > 0:
-            print(f"Successfully loaded file {filename}, shape: {audio_array.shape}, sample rate: {sr}")
             transcription = model.transcribe.remote(audio_array)
             return transcription
         else:
@@ -130,18 +127,13 @@ def transcribe_file(file_content, filename):
 
 @app.local_entrypoint()
 def main(input_file: str):
-    start_time = time.monotonic_ns()
-    print("⏱️ Starting execution")
-
-    audio_file = None
-
     if not os.path.exists(input_file):
-        print(f"⚠️ Error: File {input_file} not found")
+        print(f"Error: File {input_file} not found")
         return
+
     try:
         with open(input_file, 'rb') as audio:
             content = audio.read()
-            print(f"Read file {input_file}, size: {len(content)} bytes")
             audio_file = (content, input_file)
     except Exception as e:
         print(f"Error reading {input_file}: {e}")
@@ -152,14 +144,6 @@ def main(input_file: str):
 
     if text:
         output_path = Path(filepath).with_suffix('.txt')
-        print(f"\n📝 File transcription {filepath}:")
-        print(text)
-        print("\nSaving to", output_path)
-
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(text)
-
-        print("✅ Saved")
-
-    end_time = time.monotonic_ns()
-    print(f"⏱️ Total execution time: {round((end_time - start_time) / 1e9, 2)}s")
+        print(f"[STATUS] DONE")

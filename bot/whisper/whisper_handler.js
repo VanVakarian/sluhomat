@@ -81,6 +81,10 @@ function getOriginalFilename(file) {
   }
 }
 
+async function updateStatus(ctx, messageId, text) {
+  await ctx.telegram.editMessageText(ctx.chat.id, messageId, null, text);
+}
+
 export async function handleAudioMessage(ctx) {
   try {
     const file = ctx.message.voice || ctx.message.audio || ctx.message.video || ctx.message.document;
@@ -88,15 +92,57 @@ export async function handleAudioMessage(ctx) {
       throw new Error('No audio file found in message');
     }
 
-    await ctx.reply('Начинаю обработку аудио...');
-
+    const statusMessage = await ctx.reply('Подготовка к расшифровке... Может занять несколько минут, запаситесь терпением.');
     const filePath = await downloadFile(ctx, file);
-    const transcription = await transcribeAudio(filePath);
-
     const originalName = getOriginalFilename(file);
-    const transcriptionFilePath = path.join(path.dirname(filePath), `${originalName}.txt`);
-    await fs.promises.writeFile(transcriptionFilePath, transcription, 'utf8');
+    const transcriptionFilePath = path.join(path.dirname(filePath), 'original.txt');
 
+    try {
+      const pythonProcess = spawn('modal', ['run', 'bot/whisper/whisper_transcribe.py', '--input-file', filePath]);
+
+      await new Promise((resolve, reject) => {
+        let lastStatus = '';
+
+        pythonProcess.stdout.on('data', async (data) => {
+          const output = data.toString();
+
+          if (output.includes('[STATUS] TRANSCRIBING')) {
+            await updateStatus(ctx, statusMessage.message_id, 'Расшифровка аудио...');
+            lastStatus = 'TRANSCRIBING';
+          }
+
+          if (output.includes('[STATUS] DONE')) {
+            lastStatus = 'DONE';
+          }
+
+          logPythonOutput('STDOUT', output);
+        });
+
+        pythonProcess.stderr.on('data', (data) => {
+          const output = data.toString();
+          logPythonOutput('STDERR', output);
+        });
+
+        pythonProcess.on('close', (code) => {
+          if (code !== 0) {
+            reject(new Error('Transcription process failed'));
+          } else if (lastStatus !== 'DONE') {
+            reject(new Error('Transcription was not completed'));
+          } else {
+            resolve();
+          }
+        });
+      });
+    } catch (error) {
+      await updateStatus(ctx, statusMessage.message_id, 'Ошибка в процессе расшифровки, попробуйте ещё раз.');
+      throw error;
+    }
+
+    if (!fs.existsSync(transcriptionFilePath)) {
+      throw new Error('Transcription file not found');
+    }
+
+    await updateStatus(ctx, statusMessage.message_id, 'Расшифровка завершена! Результаты:');
     await ctx.replyWithDocument({ source: transcriptionFilePath, filename: `${originalName}.txt` });
     await fs.promises.rm(path.dirname(filePath), { recursive: true, force: true });
   } catch (error) {
