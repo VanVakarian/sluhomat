@@ -1,7 +1,6 @@
 import os
 import modal
 from pathlib import Path
-import time
 
 MODEL_DIR = "/model"
 MODEL_NAME = "openai/whisper-large-v3"
@@ -98,7 +97,6 @@ def transcribe_file(file_content, filename):
     from pydub import AudioSegment
 
     model = Model()
-    # print("[STATUS] PREPARING")
 
     try:
         try:
