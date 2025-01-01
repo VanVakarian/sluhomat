@@ -1,16 +1,20 @@
 # Sluhomat-3000 tg bot
 
-A Telegram bot for transcribing voice messages and audio files into text using the OpenAI Whisper API.
+A Telegram bot for transcribing voice messages and audio files into text using either OpenAI Whisper API or cloud Whisper model via Modal.
 
 ## Features
 
-- Voice message transcription
-- Support for various audio and video formats
+- Multiple transcription backends support (OpenAI API or cloud Whisper model)
+- Voice message and audio file transcription
+- Video file transcription support
+- Support for various media formats
 - User authorization system
 - Long audio splitting into chunks
 - Real-time processing progress display
-- Estimated time remaining
+- Estimated time remaining calculation
 - Automatic temporary files cleanup
+- Error handling with partial results recovery
+- Logging system
 
 ## Installation
 
@@ -36,8 +40,9 @@ cp env.js.example env.js
 4. Edit `env.js` and add:
 
 - Your Telegram bot token (`TG_BOT_KEY`)
-- OpenAI API key (`OPENAI_API_KEY`)
+- OpenAI API key (`OPENAI_API_KEY`) if using OpenAI backend
 - List of authorized users (`INIT_USERS`)
+- Selected transcription method (`SELECTED_METHOD`)
 
 ## Running
 
@@ -58,36 +63,39 @@ npm run dev
 1. Add users to the `INIT_USERS` array in `env.js`
 2. Start the bot
 3. Send the `/start` command to get instructions
-4. Send a voice message or audio file for transcription
+4. Send any supported media file for transcription
 
 ## Project Structure
 
 ```
 sluhomat/
 ├── bot/
-│   ├── audio_handler.js  # Audio processing
-│   └── commands.js       # Bot commands
+│   ├── audio_gateway.js   # Audio processing router
+│   ├── openai/            # OpenAI API integration
+│   └── whisper/           # Cloud Whisper integration
 ├── db/
-│   ├── db.js             # DB connection
-│   ├── init.js           # DB initialization
-│   └── users.js          # User management
-├── temp/                 # Temporary files
-├── bot.js                # Main bot file
-├── const.js              # Constants
-├── env.js                # Configuration
-└── utils.js              # Utilities
+│   ├── db.js              # DB connection
+│   ├── init.js            # DB initialization
+│   └── users.js           # User management
+├── s-bot.js               # Main bot file
+├── env.js                 # Configuration
+├── logger.js              # Logging system
+└── utils.js               # Utilities
 ```
 
 ## Supported Formats
 
 ### Audio
 
-- MP3, WAV, OGG and other audio formats
+- MP3, WAV, OGG
 - Telegram voice messages
+- Other audio formats supported by FFmpeg
 
 ### Video
 
-- MP4, MOV, AVI, MKV, WebM, FLV, WMV, 3GP,
+- MP4, MOV, AVI
+- MKV, WebM, FLV
+- WMV, 3GP
 - Telegram video messages
 
 ## Technologies
@@ -95,18 +103,7 @@ sluhomat/
 - Node.js
 - Telegraf (Telegram Bot Framework)
 - OpenAI Whisper API
+- Cloud Whisper model via Modal
 - FFmpeg for media processing
 - SQLite for data storage
-- Error logging system
-
-## Logging
-
-- Automatic error logging to `bot_errors.log`
-- Separate logging for unauthorized user messages
-- Detailed file processing logging
-
-## Security
-
-- User authorization system
-- Automatic temporary files cleanup
-- Protection against unauthorized access
+- Structured logging system
