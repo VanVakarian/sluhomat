@@ -12,3 +12,5 @@ venv/
 *.pyc
 __pycache__
 test_audios/
+video/
+results/
