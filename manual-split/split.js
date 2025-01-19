@@ -5,7 +5,19 @@ import path from "path";
 
 ffmpeg.setFfmpegPath(ffmpegStatic);
 
-const MAX_SIZE_MB = 18;
+const DEFAULT_MAX_SIZE_MB = 19; // Using default telegram filesize limits in bots: 20 MB with a little buffer
+
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const maxMbIndex = args.indexOf("--max-mb");
+  if (maxMbIndex !== -1 && args[maxMbIndex + 1]) {
+    const maxMb = parseFloat(args[maxMbIndex + 1]);
+    if (!isNaN(maxMb) && maxMb > 0) {
+      return maxMb;
+    }
+  }
+  return DEFAULT_MAX_SIZE_MB;
+}
 
 async function getAudioDuration(filePath) {
   console.log(`Getting duration for: ${filePath}`);
@@ -26,7 +38,7 @@ async function getFileSize(filePath) {
   return sizeMB;
 }
 
-async function splitFile(filePath, maxSizeMB = MAX_SIZE_MB) {
+async function splitFile(filePath, maxSizeMB = DEFAULT_MAX_SIZE_MB) {
   console.log(`\nStarting to split file: ${filePath}`);
   console.log(`Maximum size per part: ${maxSizeMB} MB`);
 
@@ -39,25 +51,28 @@ async function splitFile(filePath, maxSizeMB = MAX_SIZE_MB) {
     }
   }
 
-  const duration = await getAudioDuration(filePath);
-  console.log(`Total duration: ${duration} seconds`);
+  const totalDuration = await getAudioDuration(filePath);
+  const totalSize = await getFileSize(filePath);
+
+  const numberOfParts = Math.ceil(totalSize / maxSizeMB);
+  const segmentDuration = Math.ceil(totalDuration / numberOfParts) + 1;
+
+  console.log(`Total duration: ${totalDuration} seconds`);
+  console.log(`Total size: ${totalSize.toFixed(2)} MB`);
+  console.log(`Number of parts: ${numberOfParts}`);
+  console.log(`Calculated segment duration: ${segmentDuration} seconds`);
 
   const ext = path.extname(filePath);
   const baseName = path.basename(filePath, ext);
 
-  const segmentDuration = Math.floor(
-    (maxSizeMB * 1024 * 1024 * 8) / (128 * 1024)
-  );
-  console.log(`Estimated segment duration: ${segmentDuration} seconds`);
-
   await new Promise((resolve, reject) => {
     ffmpeg(filePath)
       .outputOptions([
-        "-c copy", // Copying without re-encoding
-        "-f segment", // Splitting into segments
-        "-segment_time " + segmentDuration, // Setting segment duration
-        "-reset_timestamps 1", // Resetting timestamps for each segment
-        "-map 0", // Copying all streams
+        "-c copy",
+        "-f segment",
+        "-segment_time " + segmentDuration,
+        "-reset_timestamps 1",
+        "-map 0",
       ])
       .on("start", (commandLine) => {
         console.log(`FFmpeg command: ${commandLine}`);
@@ -92,6 +107,7 @@ async function splitFile(filePath, maxSizeMB = MAX_SIZE_MB) {
 }
 
 async function main() {
+  const maxMb = parseArgs();
   const audioExtensions = [".mp3", ".wav", ".ogg", ".m4a", ".aac"];
   console.log(`\nSearching for audio files in file_to_convert directory...`);
   const files = await fs.promises.readdir("file_to_convert");
@@ -114,7 +130,7 @@ async function main() {
   const inputPath = path.join("file_to_convert", fileToProcess);
 
   try {
-    await splitFile(inputPath);
+    await splitFile(inputPath, maxMb);
     console.log(`\nSuccessfully processed ${fileToProcess}`);
   } catch (error) {
     console.error(`\nError processing ${fileToProcess}:`, error.message);

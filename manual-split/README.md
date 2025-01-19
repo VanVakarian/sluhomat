@@ -1,6 +1,6 @@
 # Audio File Splitter
 
-A Node.js script for splitting large audio files into smaller segments while maintaining original quality. The script automatically splits files that exceed a specified size limit (default 18MB) into multiple parts without re-encoding.
+A Node.js script for splitting large audio files into smaller segments while maintaining original quality. The script automatically splits files that exceed a specified size limit (default 19MB) into multiple parts without re-encoding.
 
 ## Features
 
@@ -20,12 +20,18 @@ A Node.js script for splitting large audio files into smaller segments while mai
 
 1. Create a `file_to_convert` directory in the script's folder
 2. Place your audio file(s) in the `file_to_convert` directory
-3. Run the script:
+3. Run the script using one of these options:
+
 ```bash
+# Using default settings (max part size 19MB)
 node split.js
+
+# Using custom maximum part size in MB
+node split.js --max-mb 25
 ```
 
 The script will:
+
 - Process all supported audio files in the `file_to_convert` directory
 - Create a `results` directory
 - Split files into parts if they exceed the size limit
@@ -35,7 +41,7 @@ Split files will be saved in the `results` directory with naming pattern: `origi
 
 ## Technical Details
 
-- Maximum file size per part: 18MB (configurable)
+- Maximum file size per part: 19MB by default (configurable via --max-mb parameter)
 - Uses FFmpeg's segment feature for splitting
 - Preserves timestamps for each segment
 - Copies all audio streams without re-encoding
