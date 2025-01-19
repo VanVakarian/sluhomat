@@ -24,11 +24,15 @@ if (videoFiles.length === 0) {
 const inputVideo = path.join(videoDir, videoFiles[0]);
 const outputAudio = path.join(
   resultsDir,
-  path.basename(videoFiles[0], path.extname(videoFiles[0])) + ".mp3"
+  path.basename(videoFiles[0], path.extname(videoFiles[0])) + ".m4a"
 );
 
 ffmpeg(inputVideo)
-  .toFormat("mp3")
+  .outputOptions([
+    "-vn", // disable video stream
+    "-acodec copy", // copy audio codec without reencoding
+  ])
+  .output(outputAudio)
   .on("end", () => console.log("Extraction complete"))
   .on("error", (err) => console.error("Error:", err.message))
-  .save(outputAudio);
+  .run();
