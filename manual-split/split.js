@@ -72,6 +72,7 @@ async function splitFile(filePath, maxSizeMB = DEFAULT_MAX_SIZE_MB) {
         "-f segment",
         "-segment_time " + segmentDuration,
         "-reset_timestamps 1",
+        "-segment_start_number 1",
         "-map 0",
       ])
       .on("start", (commandLine) => {
